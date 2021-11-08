@@ -14,14 +14,16 @@ type BDDNode =  (NodeId, (Index, NodeId, NodeId))
 type BDD = (NodeId, [BDDNode])
 
 ------------------------------------------------------
--- PART I
+-- PART I Marks: 9/10
 
+-- Marks: 1/1
 -- Pre: The item is in the given table
 lookUp :: Eq a => a -> [(a, b)] -> b
 lookUp x ((k, v) : ps) 
   | x == k    = v 
   | otherwise = lookUp x ps
 
+{- Revised
 checkSat :: BDD -> Env -> Bool
 checkSat (rootID, ns) env
   | rootID == 1          = True
@@ -30,9 +32,31 @@ checkSat (rootID, ns) env
   | otherwise            = checkSat (leftID, ns) env
   where
     (rootIndex, leftID, rightID) = lookUp rootID ns 
-    rootVal = lookUp rootIndex env
-  
+-}
 
+-- Marks: 3/4 - redundant rootVal == False, just use the expression straight
+checkSat :: BDD -> Env -> Bool
+checkSat (rootID, ns) env
+  | rootID == 1 = True
+  | rootID == 0 = False
+  | rootVal == False = checkSat (leftID, ns) env 
+  | otherwise        = checkSat (rightID, ns) env
+  where
+    (rootIndex, leftID, rightID) = lookUp rootID ns 
+    rootVal = lookUp rootIndex env
+
+{- Revised
+sat :: BDD -> [[(Index, Bool)]]
+sat (rootID, ns)
+  | rootID == 1 = [[]]
+  | rootID == 0 = []
+  | otherwise   = map ((rootIndex, False) :) sat (leftID, ns) ++
+                  map ((rootIndex, True) :) sat (rightID, ns)
+  where
+    (rootIndex, leftID, rightID) = lookUp rootID ns
+-}
+
+-- Marks: 5/5 - Could have used map ((i,False) :) (sat (leftID, ns)) to simplify
 sat :: BDD -> [[(Index, Bool)]]
 sat (rootID, ns)
   | rootID == 1 = [[]]
@@ -43,21 +67,7 @@ sat (rootID, ns)
     (rootIndex, leftID, rightID) = lookUp rootID ns
 
 
--- sat :: BDD -> [[(Index, Bool)]]
--- sat bdd
---   = sat' bdd []
---   where
---     sat' :: BDD -> [[(Index, Bool)]] -> [[(Index, Bool)]]
---     sat' (rootID', ns') sets
---       | rootID' == 1 = [] : sets 
---       | rootID' == 0 = sets 
---       | length sets > 0 = sat' (leftID, ns') [(rootIndex, False) : set | set <- sets] ++
---                           sat' (rightID, ns') [(rootIndex, True) : set | set <- sets] 
---       | otherwise       = sat' (leftID, ns') [[(rootIndex, False)]] ++
---                           sat' (rightID, ns') [[(rootIndex, True)]]
---       where
---         (rootIndex, leftID, rightID) = lookUp rootID' ns'
-------------------------------------------------------
+-----------------------------------------------------
 -- PART II
 
 simplify :: BExp -> BExp
