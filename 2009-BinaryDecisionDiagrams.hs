@@ -24,10 +24,10 @@ lookUp x ((k, v) : ps)
 
 checkSat :: BDD -> Env -> Bool
 checkSat (rootID, ns) env
-  | rootID == 1 = True
-  | rootID == 0 = False
-  | rootVal == False = checkSat (leftID, ns) env 
-  | otherwise        = checkSat (rightID, ns) env
+  | rootID == 1          = True
+  | rootID == 0          = False
+  | lookUp rootIndex env = checkSat (rightID, ns) env 
+  | otherwise            = checkSat (leftID, ns) env
   where
     (rootIndex, leftID, rightID) = lookUp rootID ns 
     rootVal = lookUp rootIndex env
