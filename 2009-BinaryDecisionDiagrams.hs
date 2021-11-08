@@ -14,7 +14,7 @@ type BDDNode =  (NodeId, (Index, NodeId, NodeId))
 type BDD = (NodeId, [BDDNode])
 
 ------------------------------------------------------
--- PART I Marks: 9/10
+-- PART I - Marks: 9/10
 
 -- Marks: 1/1
 -- Pre: The item is in the given table
@@ -68,8 +68,9 @@ sat (rootID, ns)
 
 
 -----------------------------------------------------
--- PART II
+-- PART II - Marks: 7/7
 
+-- Marks: 2/2
 simplify :: BExp -> BExp
 simplify (Not (Prim x))
   = Prim (not x) 
@@ -80,6 +81,7 @@ simplify (Or (Prim x) (Prim x'))
 simplify bexp
   = bexp
 
+-- Marks: 5/5
 restrict :: BExp -> Index -> Bool -> BExp
 restrict (IdRef x) index bool
   | x == index = Prim bool 
