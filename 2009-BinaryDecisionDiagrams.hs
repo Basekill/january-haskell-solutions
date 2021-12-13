@@ -97,8 +97,9 @@ restrict (Or bexp bexp') index bool
 
 
 ------------------------------------------------------
--- PART III
+-- PART III - Marks: 6/6
 
+-- Marks: 6/6
 -- Pre: Each variable index in the BExp appears exactly once
 --     in the Index list; there are no other elements
 -- The question suggests the following definition (in terms of buildBDD')
