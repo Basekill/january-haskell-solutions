@@ -84,6 +84,8 @@ getChildren :: String -> XML -> [XML]
 getChildren s (Element _ _ (x@(Element n _ _) : xs))
   | s == n = x : getChildren s (Element "" [] xs)
   | otherwise = getChildren s (Element "" [] xs)
+getChildren s (Element _ _ (_ : x))
+  = getChildren s (Element "" [] x)
 getChildren _ _
   = []
 
@@ -254,7 +256,7 @@ expandXSL' :: Context -> XSL -> [XML]
 expandXSL' context x@(Element "value-of" _ _)
   = [expandVO (getAttribute "select" x) context]
 expandXSL' context x@(Element "for-each" _ es)
-  = concat [concatMap (expandXSL' c) es | c <- expandFE (getAttribute "select" x) [context]]
+  = trace ("\n EXPANDED: " ++ show (expandFE (getAttribute "select" x) [context]) ++ "\nes: " ++ show es ++ "\n!!!: " ++ show (concat [concatMap (expandXSL' c) es | c <- expandFE (getAttribute "select" x) [context]])) concat [concatMap (expandXSL' c) es | c <- expandFE (getAttribute "select" x) [context]]
 expandXSL' context x@(Element n as xs)
   = [Element n as (concatMap (expandXSL' context) xs)]
 expandXSL' _ x
@@ -278,7 +280,7 @@ expandFE "" contexts
 expandFE xpath@(c : cs) contexts
   | c == '.' && null xpath' = expandFE "" contexts
   | c == '.'                = expandFE (tail xpath') contexts
-  | null xpath' = concatMap (getChildren step) contexts
+  | null xpath' = trace ("STEP: " ++ show step ++ "CONTEXTS: " ++ show contexts) concatMap (getChildren step) contexts
   | otherwise = expandFE (tail xpath') (concatMap (getChildren step) contexts)
     where
       (step, xpath') = break (=='/') xpath
