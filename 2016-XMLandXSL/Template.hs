@@ -252,11 +252,12 @@ expandXSL xsl source
   where
     root = Element "/" [] [source]
 
+-- * Updated version
 expandXSL' :: Context -> XSL -> [XML]
 expandXSL' context x@(Element "value-of" _ _)
   = [expandVO (getAttribute "select" x) context]
 expandXSL' context x@(Element "for-each" _ es)
-  = trace ("\n EXPANDED: " ++ show (expandFE (getAttribute "select" x) [context]) ++ "\nes: " ++ show es ++ "\n!!!: " ++ show (concat [concatMap (expandXSL' c) es | c <- expandFE (getAttribute "select" x) [context]])) concat [concatMap (expandXSL' c) es | c <- expandFE (getAttribute "select" x) [context]]
+  = concat [concatMap (expandXSL' c) es | c <- expandFE (getAttribute "select" x) [context]]
 expandXSL' context x@(Element n as xs)
   = [Element n as (concatMap (expandXSL' context) xs)]
 expandXSL' _ x
@@ -266,24 +267,59 @@ expandVO :: String -> Context -> XML
 expandVO "" context
   = getValue context
 expandVO xpath@(c : cs) context
-  | c == '.' && null xpath' = expandVO "" context
-  | c == '.'                = expandVO (tail xpath') context
-  | c == '@' = Text (getAttribute cs context)
-  | null xpath' = expandVO "" (getChild step context)
-  | otherwise = expandVO (tail xpath') (getChild step context) 
+  | c == '.'  = expandVO xpath'' context
+  | c == '@'  = Text (getAttribute cs context)
+  | otherwise = expandVO xpath'' (getChild step context) 
     where
       (step, xpath') = break (=='/') xpath
+      xpath''        = dropWhile (=='/') xpath'
 
 expandFE :: String -> [Context] -> [Context] 
 expandFE "" contexts
   = contexts 
 expandFE xpath@(c : cs) contexts
-  | c == '.' && null xpath' = expandFE "" contexts
-  | c == '.'                = expandFE (tail xpath') contexts
-  | null xpath' = trace ("STEP: " ++ show step ++ "CONTEXTS: " ++ show contexts) concatMap (getChildren step) contexts
-  | otherwise = expandFE (tail xpath') (concatMap (getChildren step) contexts)
+  | c == '@'  = map (Text . getAttribute cs) contexts
+  | c == '.'  = expandFE xpath'' contexts
+  | otherwise = expandFE xpath'' (concatMap (getChildren step) contexts)
     where
       (step, xpath') = break (=='/') xpath
+      xpath''        = dropWhile (=='/') xpath'
+
+-- * My old version
+-- expandXSL' :: Context -> XSL -> [XML]
+-- expandXSL' context x@(Element "value-of" _ _)
+--   = [expandVO (getAttribute "select" x) context]
+-- expandXSL' context x@(Element "for-each" _ es)
+--   =  concat [concatMap (expandXSL' c) es | c <- expandFE (getAttribute "select" x) [context]]
+--   -- trace ("\n EXPANDED: " ++ show (expandFE (getAttribute "select" x) [context]) ++ "\nes: " ++ show es ++ "\n!!!: " ++ show (concat [concatMap (expandXSL' c) es | c <- expandFE (getAttribute "select" x) [context]]))
+-- expandXSL' context x@(Element n as xs)
+--   = [Element n as (concatMap (expandXSL' context) xs)]
+-- expandXSL' _ x
+--   = [x]
+
+
+-- expandVO :: String -> Context -> XML
+-- expandVO "" context
+--   = getValue context
+-- expandVO xpath@(c : cs) context
+--   | c == '.' && null xpath' = expandVO "" context
+--   | c == '.'                = expandVO (tail xpath') context
+--   | c == '@' = Text (getAttribute cs context)
+--   | null xpath' = expandVO "" (getChild step context)
+--   | otherwise = expandVO (tail xpath') (getChild step context) 
+--     where
+--       (step, xpath') = break (=='/') xpath
+-- 
+-- expandFE :: String -> [Context] -> [Context] 
+-- expandFE "" contexts
+--   = contexts 
+-- expandFE xpath@(c : cs) contexts
+--   | c == '.' && null xpath' = expandFE "" contexts
+--   | c == '.'                = expandFE (tail xpath') contexts
+--   | null xpath' = trace ("STEP: " ++ show step ++ "CONTEXTS: " ++ show contexts) concatMap (getChildren step) contexts
+--   | otherwise = expandFE (tail xpath') (concatMap (getChildren step) contexts)
+--     where
+--       (step, xpath') = break (=='/') xpath
 
 
 -- findValue :: String -> Context -> String
