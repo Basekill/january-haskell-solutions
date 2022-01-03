@@ -1,4 +1,5 @@
 import Data.Maybe
+import Debug.Trace
 
 -- All programs are assumed to be well-formed in the following sense:
 --
@@ -56,73 +57,163 @@ type Binding = (Id, (Scope, Value))
 
 type State = [Binding]
 
+-- TOTAL: 27/28 (96%) - 27/30 Possible
 --------------------------------------------------------------------
--- Part I
+-- Part I: 7/8
 
+-- 1/1
 getValue :: Id -> State -> Value
 -- Pre: The identifier has a binding in the state
-getValue 
-  = undefined
+getValue id s
+  = (snd . lookUp id) s 
 
+-- 2/2
+-- getLocals :: State -> State
+-- getLocals s
+--   = filter (\(_, (sc, _)) -> sc == Local) s 
+-- 
+-- getGlobals :: State -> State
+-- getGlobals s
+--   = filter (\(_, (sc, _)) -> sc == Global) s 
+
+-- * Both getLocals and getGlobals can be simplified using extensionality
 getLocals :: State -> State
 getLocals
-  = undefined
+  = filter (\(_, (sc, _)) -> sc == Local) 
 
 getGlobals :: State -> State
 getGlobals
-  = undefined
+  = filter (\(_, (sc, _)) -> sc == Global)
 
+-- 2/2
 assignArray :: Value -> Value -> Value -> Value
 -- The arguments are the array, index and (new) value respectively
 -- Pre: The three values have the appropriate value types (array (A), 
 --      integer (I) and integer (I)) respectively.
-assignArray 
-  = undefined
+assignArray (A a) (I i) (I v)
+  = A ((i, v) : (filter (\(i', _) -> i' /= i) a))
 
+-- 2/3: otherwise line is too long and the function can be done without lookup
+-- updateVar :: (Id, Value) -> State -> State
+-- updateVar (id, v) s
+--   | isNothing lk = (id, (Local, v)) : s 
+--   | otherwise    = (id, (((fst . fromJust) lk), v)) : (filter (\(id', (sc, _)) -> id' /= id || sc /= (fst . fromJust) lk) s)
+--     where
+--       lk = lookup id s 
+
+-- * using elem and map
 updateVar :: (Id, Value) -> State -> State
-updateVar 
-  = undefined
+updateVar (id, v) s
+  | elem id (map fst s) = map (\b@(x, (sc, y)) -> if x == id then (x, (sc, v)) else b) s
+  | otherwise         = (id, (Local, v)) : s
 
 ---------------------------------------------------------------------
--- Part II
+-- Part II: 12/12
 
+-- 3/3
+-- applyOp :: Op -> Value -> Value -> Value
+-- -- Pre: The values have the appropriate types (I or A) for each primitive
+-- applyOp Add (I v) (I v')
+--   = I (v + v')
+-- applyOp Mul (I v) (I v')
+--   = I (v * v')
+-- applyOp Less (I v) (I v')
+--   | v < v'    = I 1
+--   | otherwise = I 0
+-- applyOp Equal (I v) (I v')
+--   | v == v'   = I 1
+--   | otherwise = I 0
+-- applyOp Index (A a) (I i)
+--   | isNothing lk = I 0
+--   | otherwise    = I (fromJust lk)
+--     where
+--       lk = lookup i a
+
+-- * We can do it without lookup
 applyOp :: Op -> Value -> Value -> Value
 -- Pre: The values have the appropriate types (I or A) for each primitive
-applyOp 
-  = undefined
+applyOp Add (I v) (I v')
+  = I (v + v')
+applyOp Mul (I v) (I v')
+  = I (v * v')
+applyOp Less (I v) (I v')
+  | v < v'    = I 1
+  | otherwise = I 0
+applyOp Equal (I v) (I v')
+  | v == v'   = I 1
+  | otherwise = I 0
+applyOp Index (A []) (I _)
+  = I 0
+applyOp Index (A ((x, y) : xys)) (I i)
+  | x == i    = I y
+  | otherwise = applyOp Index (A xys) (I i)
 
+-- 1/1
 bindArgs :: [Id] -> [Value] -> State
 -- Pre: the lists have the same length
-bindArgs
-  = undefined
+bindArgs ids vs
+  = zip ids (zip (repeat Local) vs)
 
+-- 8/8
 evalArgs :: [Exp] -> [FunDef] -> State -> [Value]
-evalArgs
-  = undefined
+evalArgs es ds s
+  = map (\e -> eval e ds s) es 
 
 eval :: Exp -> [FunDef] -> State -> Value
 -- Pre: All expressions are well formed
 -- Pre: All variables referenced have bindings in the given state
-eval 
-  = undefined
+eval (Const c) _ _
+  = c 
+eval (Var id) _ s
+  = getValue id s
+eval (Cond b e e') ds s
+  | eval b ds s == I 1  = eval e ds s
+  | otherwise           = eval e' ds s
+eval (OpApp op e e') ds s
+  = applyOp op (eval e ds s) (eval e' ds s)
+eval (FunApp f es) ds s
+  = eval e ds (bs ++ s)
+    where
+      (as, e) = lookUp f ds
+      vs      = evalArgs es ds s
+      bs      = bindArgs as vs
 
 ---------------------------------------------------------------------
--- Part III
+-- Part III: 8/8
 
+-- 8/8
 executeStatement :: Statement -> [FunDef] -> [ProcDef] -> State -> State
 -- Pre: All statements are well formed 
 -- Pre: For array element assignment (AssignA) the array variable is in scope,
 --      i.e. it has a binding in the given state
-executeStatement 
-  = undefined
+executeStatement (Assign id e) fds _ s
+  = updateVar (id, eval e fds s) s
+executeStatement (AssignA id ei ev) fds _ s
+  = updateVar (id, assignArray (getValue id s) (eval ei fds s) (eval ev fds s)) s
+executeStatement (If p b b') fds pds s
+  | eval p fds s == I 1   = executeBlock b fds pds s
+  | otherwise             = executeBlock b' fds pds s
+executeStatement sm@(While p b) fds pds s
+  | eval p fds s == I 1 = executeStatement sm fds pds (executeBlock b fds pds s) 
+  | otherwise           = s
+executeStatement (Call vid pid es) fds pds s
+  | null vid  = finalS 
+  | otherwise = updateVar (vid, res) finalS
+    where
+      finalS    = getLocals s ++ getGlobals s'
+      (aids, b) = lookUp pid pds
+      res       = (snd . lookUp "$res") s' -- * This could be changed to res = getValue "$res" s'
+      s'        = executeBlock b fds pds (bindArgs aids (evalArgs es fds s) ++ getGlobals s)
+executeStatement (Return e) fds _ s
+  = updateVar ("$res", eval e fds s) s
 
 executeBlock :: Block -> [FunDef] -> [ProcDef] -> State -> State
 -- Pre: All code blocks and associated statements are well formed
-executeBlock 
-  = undefined
+executeBlock b fds pds s
+  = foldl (\s' sm -> executeStatement sm fds pds s') s b
 
 ---------------------------------------------------------------------
--- Part IV
+-- Part IV: 0/2 Did not complete in time
 
 translate :: FunDef -> Id -> [(Id, Id)] -> ProcDef
 translate (name, (as, e)) newName nameMap 
@@ -131,8 +222,13 @@ translate (name, (as, e)) newName nameMap
     (b, e', ids') = translate' e nameMap ['$' : show n | n <- [1..]] 
 
 translate' :: Exp -> [(Id, Id)] -> [Id] -> (Block, Exp, [Id])
-translate' 
+translate' (Cond p e e') t ids
   = undefined
+  -- = ([If p b b'], , ids'') 
+  --   where
+  --     (b, e1, ids') = translate' e t ids
+  --     (b', e2, ids'') = translate' e' t ids'
+
 
 ---------------------------------------------------------------------
 -- PREDEFINED FUNCTIONS
@@ -342,6 +438,16 @@ fibM
              ]
      )
     )
+
+-- fib :: FunDef
+-- fib
+--   = ("fib",
+--      (["n"], Cond (OpApp Less (Var "n") (Const (I 3)))
+--                   (Const (I 1))
+--                   (OpApp Add (FunApp "fib" [OpApp Add (Var "n") (Const (I (-1)))])
+--                              (FunApp "fib" [OpApp Add (Var "n") (Const (I (-2)))]))
+--      )
+--     )
 
 ---------------------------------------------------------------------
 -- Sample top-level calls for testing...

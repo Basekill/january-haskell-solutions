@@ -6,6 +6,8 @@ import Data.List
 import Types
 import Examples
 
+import Debug.Trace
+
 ------------------------------------------------------
 --
 -- Part I
@@ -64,20 +66,36 @@ buildIdMap ((v, c) : cs)
   | otherwise = (v, 'R' : show c) : (buildIdMap cs)
 
 buildArgAssignments :: [Id] -> IdMap -> [Statement]
-buildArgAssignments 
-  = undefined
+buildArgAssignments [] _
+  = [] 
+buildArgAssignments (x : xs) idMap 
+  = (Assign (lookUp x idMap) (Var x)) : (buildArgAssignments xs idMap)
 
 renameExp :: Exp -> IdMap -> Exp
 -- Pre: A precondition is that every variable referenced in 
 -- the expression is in the idMap. 
-renameExp 
-  = undefined
+renameExp (Var x) idMap 
+  = Var (lookUp x idMap)
+renameExp (Apply op e e') idMap
+  = Apply op (renameExp e idMap) (renameExp e' idMap) 
+renameExp e _
+  = e
 
 renameBlock :: Block -> IdMap -> Block
 -- Pre: A precondition is that every variable referenced in 
 -- the block is in the idMap. 
-renameBlock 
-  = undefined
+renameBlock [] _
+  = [] 
+renameBlock ((Assign id e) : ss) idMap
+  | Var id' == e' = renameBlock ss idMap
+  | otherwise     = (Assign id' e') : (renameBlock ss idMap)
+  where
+    Var id' = renameExp (Var id) idMap
+    e'      = renameExp e idMap
+renameBlock ((If e b b') : ss) idMap
+  = (If (renameExp e idMap) (renameBlock b idMap) (renameBlock b' idMap)) : (renameBlock ss idMap)
+renameBlock ((While e b) : ss) idMap
+  = (While (renameExp e idMap) (renameBlock b idMap)) : (renameBlock ss idMap)
 
 renameFun :: Function -> IdMap -> Function
 renameFun (f, as, b) idMap
@@ -87,17 +105,50 @@ renameFun (f, as, b) idMap
 --
 -- Part IV
 --
-buildIG :: [[Id]] -> IG
-buildIG 
-  = undefined
+buildIG :: [[Id]] -> IG 
+buildIG [] 
+  = ([] , [])
+buildIG vss 
+  = (removeDuplicates vss, nub2 (buildIG' vss))
+    where
+      buildIG' :: [[Id]] -> [Edge Id]
+      buildIG' []
+        = []
+      buildIG' (vs : vss)
+        = [(v, v') | v <- vs, v' <- vs, v /= v'] ++ (buildIG' vss)
+      removeDuplicates :: Eq a => [[a]] -> [a]
+      removeDuplicates []
+        = []
+      removeDuplicates (xs : xss)
+        = nub ((nub xs) ++ removeDuplicates xss)
+      nub2 :: Eq a => [(a, a)] -> [(a, a)]
+      nub2 []
+        = []
+      nub2 (p : ps)
+        | elem p ps || elem (snd p, fst p) ps = nub2 ps
+        | otherwise                           = p : (nub2 ps)
+      
+
+      
+
+    
 
 -----------------------------------------------------
 --
 -- Part V
 --
 liveVars :: CFG -> [[Id]]
-liveVars 
-  = undefined
+liveVars []
+  = [] 
+liveVars (((def, use), succ) : cfg)
+  = use ++ [liveVars' n cfg | n <- succ] \ def
+    where
+      liveVars' :: Int -> CFG -> [Id]
+      liveVars' n cfg
+        = usen ++ [liveVars' n' | n' <- succ] \ defn 
+          where
+            ((defn, usen), succn) = cfg !! n
+
 
 buildCFG :: Function -> CFG
 buildCFG 

@@ -2,6 +2,7 @@ module Exam where
 
 import Data.Char
 import Data.Maybe
+import Debug.Trace
   
 type Name = String
 
@@ -12,6 +13,7 @@ data XML = Null | Text String | Element Name Attributes [XML]
 
 type Stack = [XML]
 
+-- TOTAL: 23/30 (77%)
 -----------------------------------------------------------------------
 -- Some useful show/print functions
 
@@ -43,35 +45,93 @@ printXMLs
 
 -----------------------------------------------------------------------
 -----------------------------------------------------------------------
--- Part I
+-- Part I: 11/12
 
+-- 1/1
 skipSpace :: String -> String
-skipSpace
-  = undefined
+skipSpace s
+  = dropWhile isSpace s -- * Could have used extensionality to simplify further
 
+-- 1/2: No need to get attributes from children
+-- getAttribute :: String -> XML -> String
+-- getAttribute s (Element _ as xmls)
+--   = fromMaybe "" (lookup s as) ++ (concatMap (getAttribute s) xmls)
+-- getAttribute _ _
+--   = ""
+
+-- * getAttribute does not need to get the attributes from its children
 getAttribute :: String -> XML -> String
-getAttribute 
-  = undefined
+getAttribute s (Element _ as _)
+  = fromMaybe "" (lookup s as)
+getAttribute _ _
+  = ""
 
+-- 2/2
+-- getChildren :: String -> XML -> [XML]
+-- getChildren s (Element _ _ cs)
+--   = getChildren' s cs
+--     where
+--       getChildren' :: String -> [XML] -> [XML]
+--       getChildren' _ []
+--         = []
+--       getChildren' s (xml@(Element name _ _) : xmls)
+--         | s == name = xml : getChildren' s xmls
+--       getChildren' s (_ : xmls)
+--         = getChildren' s xmls
+
+-- * Can be done without a helper function
 getChildren :: String -> XML -> [XML]
-getChildren 
-  = undefined
+getChildren s (Element _ _ (x@(Element n _ _) : xs))
+  | s == n = x : getChildren s (Element "" [] xs)
+  | otherwise = getChildren s (Element "" [] xs)
+getChildren _ _
+  = []
 
+-- getChildren :: String -> XML -> [XML]
+-- getChildren s (Element _ _ cs)
+--   = filter ((==s) . getName . isElement) cs
+--     where
+--       isElement :: XML -> Bool
+--       isElement (Element _ _ _)
+--         = True
+--       isElement _
+--         = False
+--       getName :: XML -> String 
+--       -- Pre: XML is an element
+--       getName (Element name _ _)
+--         = name
+-- getChildren _ _
+--   = []
+
+-- 2/2
 getChild :: String -> XML -> XML
-getChild 
-  = undefined
+getChild s xml
+  | null child = Text ""
+  | otherwise  = head child
+    where
+      child = getChildren s xml 
 
+-- 1/1
 addChild :: XML -> XML -> XML
 -- Pre: the second argument is an Element
-addChild 
-  = undefined
+addChild c (Element name as cs)
+  = Element name as (cs ++ [c])
 
+-- 4/4 
 getValue :: XML -> XML
-getValue 
-  = undefined
+getValue xml 
+  = Text (getValue' xml) 
+    where
+      getValue' :: XML -> String
+      getValue' (Element _ _ cs)
+        = concatMap getValue' cs
+      getValue' (Text x)
+        = x
+      getValue' _
+        = ""
 
 -------------------------------------------------------------------------
--- Part II
+-- Part II: 11/12
 
 -- Parses an element/attribute name
 parseName :: String -> (Name, String)
@@ -88,32 +148,86 @@ sentinel :: XML
 sentinel 
   = Element "" [] []
 
+-- 1/1
 addText :: String -> Stack -> Stack
 -- Pre: There is at least one Element on the stack
-addText 
-  = undefined
+addText str (e : es)
+  = (addChild (Text str) e) : es
 
+-- 1/1
 popAndAdd :: Stack -> Stack
 -- Pre: There are at least two Elements on the stack
-popAndAdd 
-  = undefined
+popAndAdd (e : e' : es)
+  = (addChild e e') : es
 
+-- 2/3: parseName requires the string to not have any spaces before and the two break lines can be combined into one
+-- parseAttributes :: String -> (Attributes, String)
+-- -- Pre: The XML attributes string is well-formed
+-- parseAttributes  s
+--   | c == '>' = ([], s')
+--   | otherwise = ((name, v) : as, cs)
+--     where
+--       (c : s') = skipSpace s 
+--       (name, s'') = parseName s
+--       (_, (_ : s''')) = break ('\"'==) s''
+--       (v, (_ : s'''')) = break ('\"'==) s'''
+--       (as, cs)         = parseAttributes (skipSpace s'''')
+
+-- * using skipSpace for parseName
 parseAttributes :: String -> (Attributes, String)
 -- Pre: The XML attributes string is well-formed
-parseAttributes 
-  = undefined
+parseAttributes  s
+  | c == '>' = ([], cs)
+  | otherwise = ((name, v) : as, xs)
+    where
+      s'@(c : cs) = skipSpace s 
+      (name, rem) = parseName s'
+      (v, (_ : rem')) = break ('\"'==) ((tail . dropWhile ('\"'/=)) rem)
+      (as, xs)        = parseAttributes rem' 
+
+
+firstChild :: XML -> XML
+-- Pre: XML must be an element
+firstChild (Element _ _ (xml : _))
+  = xml
 
 parse :: String -> XML
 -- Pre: The XML string is well-formed
 parse s
   = parse' (skipSpace s) [sentinel]
 
+-- 7/7: dropWhile should be used rather than break with (_, (_ : s')) and skipSpace is not required for parseAttributes
+-- (Although with my implementation of parseAttributes the skipSpace was required)
+-- parse' :: String -> Stack -> XML
+-- parse' "" (xml : _)
+--   = firstChild xml
+-- parse' str@(c : c' : s) stack
+--   | c == '<' && c' == '/' = parse' s' (popAndAdd stack)
+--   | c == '<'              = parse' s''' ((Element ename as []) : stack)  
+--   | otherwise             = parse' rem (addText text stack)
+--     where
+--       (_, (_ : s')) = break ('>'==) s
+--       (ename, s'')  = parseName (c' : s)
+--       (as, s''')    = parseAttributes (skipSpace s'')
+--       (text, rem)   = break ('<'==) str
+
+-- * We can use pattern matching rather than adding a firstChild helper function 
 parse' :: String -> Stack -> XML
-parse' 
-  = undefined
+parse' "" ((Element _ _ (x : _)) : _)
+  = x 
+parse' str@(c : c' : s) stack
+  | c == '<' && c' == '/' = parse' s' (popAndAdd stack)
+  | c == '<'              = parse' s''' ((Element n as []) : stack)  
+  | otherwise             = parse' rem (addText text stack)
+    where
+      s'          = (tail . dropWhile ('>'/=)) s
+      (n, s'')    = parseName (c' : s)
+      (as, s''')  = parseAttributes s''
+      (text, rem) = break ('<'==) str
+
 
 -------------------------------------------------------------------------
--- Part III
+-- Part III: 1/6
 
 type Context = XML
 
@@ -129,15 +243,69 @@ output :: String -> XML -> XML -> IO()
 output file xsl source
   = writeFile file (showXMLs (expandXSL xsl source))
 
+-- 1/6: Some progress towards correct solution
 expandXSL :: XSL -> XML -> [XML]
 expandXSL xsl source 
   = expandXSL' root xsl
   where
-    root = Element "/" [] [source] 
+    root = Element "/" [] [source]
 
 expandXSL' :: Context -> XSL -> [XML]
-expandXSL' 
-  = undefined
+expandXSL' context x@(Element "value-of" _ _)
+  = [expandVO (getAttribute "select" x) context]
+expandXSL' context x@(Element "for-each" _ es)
+  = concat [concatMap (expandXSL' c) es | c <- expandFE (getAttribute "select" x) [context]]
+expandXSL' context x@(Element n as xs)
+  = [Element n as (concatMap (expandXSL' context) xs)]
+expandXSL' _ x
+  = [x]
+
+expandVO :: String -> Context -> XML
+expandVO "" context
+  = getValue context
+expandVO xpath@(c : cs) context
+  | c == '.' && null xpath' = expandVO "" context
+  | c == '.'                = expandVO (tail xpath') context
+  | c == '@' = Text (getAttribute cs context)
+  | null xpath' = expandVO "" (getChild step context)
+  | otherwise = expandVO (tail xpath') (getChild step context) 
+    where
+      (step, xpath') = break (=='/') xpath
+
+expandFE :: String -> [Context] -> [Context] 
+expandFE "" contexts
+  = contexts 
+expandFE xpath@(c : cs) contexts
+  | c == '.' && null xpath' = expandFE "" contexts
+  | c == '.'                = expandFE (tail xpath') contexts
+  | null xpath' = concatMap (getChildren step) contexts
+  | otherwise = expandFE (tail xpath') (concatMap (getChildren step) contexts)
+    where
+      (step, xpath') = break (=='/') xpath
+
+
+-- findValue :: String -> Context -> String
+-- findValue xpath context
+--   | (not . null) step && (((=='@') . head) step) = getAttribute (tail step) context -- +0.5
+--   | null xpath' = (\(Element name _ _) -> name) context 
+--   | otherwise   = concatMap (findValue xpath') (getChildren step context)
+--     where
+--       (step, xpath') = break ('/'==) xpath -- +0.5
+-- 
+-- findXPath :: String -> Context -> [XML]
+-- findXPath xpath context 
+--   | step == "." = [Text ""]
+--   | (not . null) step && head step  == '@' = [Text (getAttribute (tail step) context)]
+--   | null xpath' = trace ("step: " ++ show step) getChildren step context
+--   | otherwise   = concatMap (findXPath xpath') (getChildren step context)
+--     where
+--       (step, xpath') = break ('/'==) xpath
+-- 
+-- expandXSL' :: Context -> XSL -> [XML]
+-- expandXSL' context (Element "value-of" [(_, xpath)] _)
+--   = [Text s]
+--     where
+--       s = findValue xpath context
 
 -------------------------------------------------------------------------
 -- Test data for Parts I and II

@@ -46,48 +46,115 @@ showRE' re
   = "(" ++ showRE re ++ ")"
 
 --------------------------------------------------------
--- Part I
+-- Part I: 3/4
 
+-- 1/1
 lookUp :: Eq a => a -> [(a, b)] -> b
 --Pre: There is exactly one occurrence of the item being looked up.
-lookUp 
-  = undefined
+lookUp k t
+  = head [y | (x, y) <- t, x == k] 
 
+-- 2/3: Missing simplify for Plus and Opt
+-- simplify :: RE -> RE
+-- simplify (Seq re re')
+--   = Seq (simplify re) (simplify re')
+-- simplify (Alt re re')
+--   = Alt (simplify re) (simplify re')
+-- simplify (Rep re)
+--   = Rep (simplify re)
+-- simplify (Plus re)
+--   = Seq re (Rep re)
+-- simplify (Opt re)
+--   = Alt re Null
+-- simplify re
+--   = re
+
+-- * Remember to apply the function recursively to all re arguments!
 simplify :: RE -> RE
-simplify
-  = undefined
+simplify (Seq re re')
+  = Seq (simplify re) (simplify re')
+simplify (Alt re re')
+  = Alt (simplify re) (simplify re')
+simplify (Rep re)
+  = Rep (simplify re)
+simplify (Plus re)
+  = Seq sre (Rep sre)
+  where
+    sre = simplify re
+simplify (Opt re)
+  = Alt (simplify re) Null
+simplify re
+  = re
+
 
 --------------------------------------------------------
--- Part II
+-- Part II: 10/11
 
+-- 1/1
 startState :: Automaton -> State
-startState
-  = undefined
+startState (s, _, _)
+  = s 
 terminalStates :: Automaton -> [State]
-terminalStates
-  = undefined
+terminalStates (_, tes, _)
+  = tes
 transitions :: Automaton -> [Transition]
-transitions 
-  = undefined
+transitions (_, _, ts)
+  = ts 
 
+-- 1/1
 isTerminal :: State -> Automaton -> Bool
-isTerminal 
-  = undefined
+isTerminal s a
+  = elem s (terminalStates a) 
 
+-- 2/2
 transitionsFrom :: State -> Automaton -> [Transition]
-transitionsFrom
-  = undefined
+transitionsFrom s a
+  = filter (\(from, _, _) -> from == s) (transitions a)
 
+-- 1/1
 labels :: [Transition] -> [Label]
-labels 
-  = undefined
+labels ts
+  = nub [lb | (_, _, lb) <- ts, lb /= Eps]
 
+-- 5/6: Guards could be simplified
+-- accepts :: Automaton -> String -> Bool
+-- accepts a str
+--   = accepts' (startState a) str
+--     where
+--       accepts' :: State -> String -> Bool
+--       accepts' s str
+--         | isTerminal s a && null str = True
+--         | otherwise = any (try str) (transitionsFrom s a)
+--           where
+--             try :: String -> Transition -> Bool
+--             try str (_, t, Eps)
+--               = accepts' t str
+--             try "" _ 
+--               = False
+--             try (c' : str) (_, t, C c)
+--               | c' == c   = accepts' t str
+--               | otherwise = False
+
+-- * Using extensionality and simplifying guards
 accepts :: Automaton -> String -> Bool
-accepts 
-  = undefined
+accepts a
+  = accepts' (startState a)
+    where
+      accepts' :: State -> String -> Bool
+      accepts' s str
+        = isTerminal s a && null str || any (try str) (transitionsFrom s a)
+          where
+            try :: String -> Transition -> Bool
+            try str (_, t, Eps)
+              = accepts' t str
+            try "" _ 
+              = False
+            try (c' : str) (_, t, C c)
+              = c' == c && accepts' t str
+
 
 --------------------------------------------------------
--- Part III
+-- Part III: 8/8
 
 makeNDA :: RE -> Automaton
 makeNDA re
@@ -95,29 +162,90 @@ makeNDA re
   where
     (transitions, k) = make (simplify re) 1 2 3
 
+-- 8/8
 make :: RE -> Int -> Int -> Int -> ([Transition], Int)
-make 
-  = undefined
+make (Null) m n k
+  = ([(m, n, Eps)], k) 
+make (Term c) m n k
+  = ([(m, n, C c)], k)
+make (Seq r1 r2) m n k
+  = (ts1 ++ ((k, k + 1, Eps) : ts2), k'')
+    where
+      (ts1, k') = make r1 m k (k + 2)
+      (ts2, k'')   = make r2 (k + 1) n k'
+make (Alt r1 r2) m n k
+  = ((m, k, Eps) : (m, k + 2, Eps) : (k + 1, n, Eps) : (k + 3, n, Eps) : ts1 ++ ts2, k'')
+    where
+      (ts1, k') = make r1 k (k + 1) (k + 4)
+      (ts2, k'') = make r2 (k + 2) (k + 3) k'
+make (Rep r) m n k
+  = ((m, k, Eps) : (m, n, Eps) : (k + 1, k, Eps) : (k + 1, n, Eps) : ts, k')
+    where
+      (ts, k') = make r k (k + 1) (k + 2)
 
 --------------------------------------------------------
--- Part IV
+-- Part IV: 0.5/2
 
 type MetaState = [State]
 
 type MetaTransition = (MetaState, MetaState, Label)
 
+label :: Transition -> Label
+label (_, _, lb)
+  = lb
+
+targetState :: Transition -> State
+targetState (_, t, _)
+  = t 
+
+sourceState :: Transition -> State
+sourceState (s, _, _)
+  = s
+
+targetStateSet :: (Label, [State]) -> [State]
+targetStateSet (_, ss)
+  = ss
+
 getFrontier :: State -> Automaton -> [Transition]
-getFrontier
-  = undefined
+getFrontier s a
+  | isTerminal s a = (s, s, Eps) : concatMap ((flip getFrontier a) . targetState) teps ++ tneps
+  | otherwise      = concatMap ((flip getFrontier a) . targetState) teps ++ tneps
+    where
+      teps = filter ((==Eps) . label) sts 
+      tneps = filter ((/=Eps) . label) sts
+      sts = transitionsFrom s a
 
 groupTransitions :: [Transition] -> [(Label, [State])]
-groupTransitions
-  = undefined
+groupTransitions ts
+  = [(lb, [to | (_, to, lb') <- ts, lb == lb']) | lb <- labels ts] 
 
+frontierMetastate :: [Transition] -> MetaState 
+frontierMetastate
+  = (sort . nub . map sourceState)
+
+-- metaStateToState :: MetaState -> State
+-- metaStateToState m
+--   = 
+
+-- 0.5/2: Decent attempt
 makeDA :: Automaton -> Automaton
 -- Pre: Any cycle in the NDA must include at least one non-Eps transition
-makeDA 
-  = undefined
+makeDA nda
+  = undefined-- (1, map fst (zip ms [2..length ms + 1]), )
+      
+    where
+      (m, ms, mts) = makeDA' [startState nda] [] []
+      makeDA' :: [State] -> [MetaState] -> [MetaTransition]
+             -> (MetaState, [MetaState], [MetaTransition])
+      makeDA' ss ms ts
+        | elem m ms = (m, ms, ts) 
+        | otherwise = foldl (\(r, ms', ts') (lb, targets) -> makeDA' targets ms' ((m, r, lb) : ts')) ([], m : ms, ts) gts
+          where
+            frontier = concatMap (flip getFrontier nda) ss
+            m       = frontierMetastate frontier
+            gts      = groupTransitions frontier 
+              -- = foldl ((\ss' -> makeDA' ss' (m : ms) ts) . targetStateSet) ([], m : ms, ts) gts
+
 
 --------------------------------------------------------
 -- Test cases
