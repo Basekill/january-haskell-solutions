@@ -1,6 +1,8 @@
 import Data.Maybe
 import Data.List
 
+import Debug.Trace
+
 type Id = String
 
 type Function = (Id, [Id], Block)
@@ -30,32 +32,60 @@ execFun :: Function -> [Int] -> State
 execFun (name, args, p) vs
   = execBlock p (zip args vs)
 
+-- TOTAL: 28/30 (93%)
 ------------------------------------------------------------------------
--- Part I
+-- Part I: 14/14
 
 type State = [(Id, Int)]
 
+-- 2/2
 update :: (Id, Int) -> State -> State
-update 
-  = undefined
+update (i, v) []
+  = [(i, v)] 
+update iv@(i, v) (iv'@(i', _) : ivs)
+  | i == i'   = iv : ivs
+  | otherwise = iv' : update iv ivs
 
+-- 2/2
 apply :: Op -> Int -> Int -> Int
-apply 
-  = undefined
+apply Add x y
+  = x + y
+apply Mul x y
+  = x * y 
+apply Eq x y
+  | x == y    = 1
+  | otherwise = 0
+apply Gtr x y
+  | x > y     = 1
+  | otherwise = 0
 
+-- 3/3
 eval :: Exp -> State -> Int
 -- Pre: the variables in the expression will all be bound in the given state 
 -- Pre: expressions do not contain phi instructions
-eval 
-  = undefined
+eval (Const x) _
+  = x 
+eval (Var i) ivs
+  = lookUp i ivs
+eval (Apply op e e') ivs
+  = apply op (eval e ivs) (eval e' ivs)
 
+-- 7/7
 execStatement :: Statement -> State -> State
-execStatement 
-  = undefined
+execStatement (Assign i e) ivs 
+  = update (i, eval e ivs) ivs
+execStatement (If e b b') ivs
+  | eval e ivs == 1 = execBlock b ivs
+  | otherwise       = execBlock b' ivs
+execStatement dw@(DoWhile b e) ivs
+  | eval e ivs' == 1 = execStatement dw ivs'
+  | otherwise        = ivs'
+    where
+      ivs' = execBlock b ivs
 
 execBlock :: Block -> State -> State
-execBlock 
-  = undefined
+execBlock b ivs
+  = foldl (flip (execStatement)) ivs b
 
 ------------------------------------------------------------------------
 -- Given function for testing propagateConstants...
@@ -66,27 +96,127 @@ applyPropagate (name, args, body)
   = (name, args, propagateConstants body)
 
 ------------------------------------------------------------------------
--- PART II
+-- PART II: 11/12
 
+-- 3/3
 foldConst :: Exp -> Exp
 -- Pre: the expression is in SSA form
-foldConst 
-  = undefined
+foldConst (Phi (Const c1) (Const c2))
+  | c1 == c2 = Const c1
+foldConst (Apply op (Const c1) (Const c2))
+  = Const (apply op c1 c2)
+foldConst (Apply Add (Var v) (Const 0))
+  = Var v
+foldConst (Apply Add (Const 0) (Var v))
+  = Var v
+foldConst e
+  = e
 
+-- 2/3: The specification does say to apply foldConst to the result no matter what
+-- sub :: Id -> Int -> Exp -> Exp
+-- -- Pre: the expression is in SSA form
+-- sub i v (Var i')
+--   | i == i' = Const v 
+-- sub i v (Apply op e e')
+--   = foldConst (Apply op (sub i v e) (sub i v e'))
+-- sub i v (Phi e e')
+--   = foldConst (Phi (sub i v e) (sub i v e'))
+-- sub _ _ x
+--   = x
+
+-- * Applying foldConst to everything
 sub :: Id -> Int -> Exp -> Exp
 -- Pre: the expression is in SSA form
-sub 
-  = undefined
+sub i v (Var i')
+  | i == i' = foldConst (Const v)
+sub i v (Apply op e e')
+  = foldConst (Apply op (sub i v e) (sub i v e'))
+sub i v (Phi e e')
+  = foldConst (Phi (sub i v e) (sub i v e'))
+sub _ _ x
+  = foldConst x
+
 
 -- Use (by uncommenting) any of the following, as you see fit...
--- type Worklist = [(Id, Int)]
+type Worklist = [(Id, Int)]
+
+-- * Extra time
+scan :: Id -> Int -> Block -> (Worklist, Block)
+scan v c ((Assign i e) : b)
+  | i /= "$return", (Const c) <- e' = ((i, c) : w', b')
+  | otherwise                       = (w', (Assign i e') : b')
+    where
+      e'         = sub v c e
+      (w', b')   = scan v c b
+scan v c ((If e b1 b2) : b)
+  = (w' ++ w1' ++ w2', (If e' b1' b2') : b')
+    where
+      (w1', b1') = scan v c b1
+      (w2', b2') = scan v c b2
+      e'         = sub v c e
+      (w', b')   = scan v c b
+scan v c ((DoWhile b1 e) : b)
+  = (w' ++ w1', (DoWhile b1' e') : b')
+    where
+      (w1', b1') = scan v c b1
+      e'         = sub v c e
+      (w', b')   = scan v c b
+scan _ _ []
+  = ([], [])
+
+-- 6/7: -1 for code complexity, foldConst is not required for sub since by specification it is already applied
 -- scan :: Id -> Int -> Block -> (Worklist, Block)
+-- scan v c b
+--   = removeConstAssign b' 
+--     where
+--       b' = map subStatement b
+--       subStatement :: Statement -> Statement
+--       subStatement (Assign i e)
+--         = Assign i ((foldConst . sub v c) e)
+--       subStatement (If e b b')
+--         = If ((foldConst . sub v c) e)
+--              (map subStatement b) (map subStatement b')
+--       subStatement (DoWhile b e)
+--         = DoWhile (map subStatement b) ((foldConst . sub v c) e)
+--       removeConstAssign :: Block -> (Worklist, Block)
+--       removeConstAssign ((Assign i (Const c)) : b)
+--         | i /= "$return" = ((i, c) : w, b')
+--           where
+--             (w, b') = removeConstAssign b
+--       removeConstAssign ((If e b1 b2) : b) 
+--         = (w ++ w1 ++ w2, (If e b1' b2') : b') 
+--           where
+--             (w1, b1') = removeConstAssign b1
+--             (w2, b2') = removeConstAssign b2
+--             (w, b') = removeConstAssign b
+--       removeConstAssign ((DoWhile b1 e) : b)
+--         = (w ++ w1, (DoWhile b1' e) : b') 
+--           where
+--             (w1, b1') = removeConstAssign b1
+--             (w, b')   = removeConstAssign b
+--       removeConstAssign (s : b)
+--         = (w, s : b')
+--           where
+--             (w, b') = removeConstAssign b
+--       removeConstAssign []
+--         = ([], [])
+      
+
 -- scan :: (Exp -> Exp) -> Block -> (Exp -> Exp, Block)
  
 propagateConstants :: Block -> Block
 -- Pre: the block is in SSA form
-propagateConstants 
-  = undefined
+propagateConstants b 
+  = propagateConstants' w b'
+    where
+      (w, b') = scan "$INVALID" 0 b
+      propagateConstants' :: Worklist -> Block -> Block
+      propagateConstants' [] b
+        = b
+      propagateConstants' ((v, c) : w) b
+        = propagateConstants' (w' ++ w) b' 
+          where
+            (w', b') = scan v c b
 
 ------------------------------------------------------------------------
 -- Given functions for testing unPhi...
@@ -103,12 +233,62 @@ optimise (name, args, body)
   = (name, args, unPhi (propagateConstants body))
 
 ------------------------------------------------------------------------
--- PART III
+-- PART III: 2/3
+
+-- 2/3: -1 for code complexity
+-- getPhiAssignments :: Block -> ([(Id, (Exp, Exp))], Block)
+-- getPhiAssignments []
+--   = ([], [])
+-- getPhiAssignments ((Assign i (Phi e1 e2)) : b)
+--   = ((i, (e1, e2)) : ps, b')
+--     where
+--       (ps, b') = getPhiAssignments b
+-- getPhiAssignments (s : b)
+--   = (ps, s : b')
+--     where
+--       (ps, b') = getPhiAssignments b
+-- 
+-- 
+-- unPhi :: Block -> Block
+-- -- Pre: the block is in SSA form
+-- unPhi ((If e b1 b2) : b)
+--   = (If e (unPhi b1 ++ (map fst as)) (unPhi b2 ++ (map snd as))) : (unPhi b')
+--     where
+--       (ps, b') = getPhiAssignments b
+--       as       = map (\(i, (t, f)) -> (Assign i t, Assign i f)) ps
+-- unPhi ((DoWhile b1 e) : b)
+--   = (map fst as) ++ (DoWhile (b' ++ (map snd as)) e) : (unPhi b)
+--     where
+--       (ps, b') = getPhiAssignments b1
+--       as       = map (\(i, (a, b)) -> (Assign i a, Assign i b)) ps
+-- unPhi (s : b)
+--   = s : (unPhi b)
+-- unPhi []
+--   = []
+
 
 unPhi :: Block -> Block
--- Pre: the block is in SSA form
-unPhi 
-  = undefined
+unPhi []
+  = []
+unPhi (s : ss)
+  | If e b1 b2         <- s, (b1', b2')   <- getPhis ss 
+    = If e (unPhi (b1 ++ b1')) (unPhi (b2 ++ b2')) : unPhi ss
+  | DoWhile b e        <- s, (b1'', b2'') <- getPhis b  
+    = (unPhi b1'') ++ DoWhile (unPhi (b ++ b2'')) e : unPhi ss
+  | Assign _ (Phi _ _) <- s 
+    = unPhi ss
+  | otherwise 
+    = s : unPhi ss
+  where
+    getPhis :: Block -> (Block, Block)
+    getPhis []
+      = ([], [])
+    getPhis ((Assign i (Phi e1 e2)) : b)
+      = ((Assign i e1) : b1, (Assign i e2) : b2)
+        where
+          (b1, b2) = getPhis b
+    getPhis (s : b)
+      = getPhis b
 
 ------------------------------------------------------------------------
 -- Part IV
